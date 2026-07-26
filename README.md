@@ -1,8 +1,10 @@
-# OpenGear
+﻿# OpenGear
 
 > **Core Idea**: Let the LLM be controlled by the GearFlow engine, rather than letting the LLM control the Agent.
 >
 > The fundamental flaw of traditional AI Agents is forcing the LLM to act as both translator and decision-maker—but the LLM is a probabilistic model and cannot precisely control execution. OpenGear solves this contradiction through **four-layer responsibility separation**.
+
+📖 **Complete Architecture Document → [Wiki 首页](https://github.com/kingofducati/OpenGearDoc/wiki)**
 
 ## One-Sentence Summary
 
