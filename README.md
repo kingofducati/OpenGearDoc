@@ -1,130 +1,130 @@
 # OpenGear
 
-> **核心思想**：让 LLM 受 GearFlow 引擎控制，而非让 LLM 控制 Agent。
+> **Core Idea**: Let the LLM be controlled by the GearFlow engine, rather than letting the LLM control the Agent.
 >
-> 传统 AI Agent 的根本缺陷是让 LLM 同时做翻译和决策——但 LLM 是概率性模型，无法精确控制执行。OpenGear 通过**四层职责分离**解决这个矛盾。
+> The fundamental flaw of traditional AI Agents is forcing the LLM to act as both translator and decision-maker—but the LLM is a probabilistic model and cannot precisely control execution. OpenGear solves this contradiction through **four-layer responsibility separation**.
 
-## 一句话总结
+## One-Sentence Summary
 
-OpenGear 把 LLM 当**翻译官**（意图 → GearFlow 工作流 JSON），把**决策权统一上移到 GearFlow 引擎**，由工作流骨架 + 决策引擎 + Supervisor 验证 + 精准模型驱动的 Capability 共同执行。
+OpenGear treats the LLM as a **translator** (intent → GearFlow workflow JSON), and **unifies decision-making authority in the GearFlow engine**. Execution is carried out by the workflow skeleton, the decision engine, Supervisor validation, and precision-model-driven Capabilities working together.
 
-## 四层架构
+## Four-Layer Architecture
 
-| 层级 | 角色 | 承担者 | 确定性 | 职责 |
-|------|------|--------|--------|------|
-| 1 | **LLM（翻译官）** | 精准模型 1.5B-3B | 概率性 | 只把意图翻译为工作流 JSON |
-| 2 | **工作流（骨架）** | JSON 配置文件 | **确定性** | 定义节点类型、连接关系、workGuide |
-| 3 | **Capability（手）** | 插件 + 精准模型 | 概率性 | 声明能力 + 声明鉴权规则，**不持决策权** |
-| 4 | **GearFlow 引擎** | 框架核心 | **确定性** | 调度 Planner / Executor / Supervisor / 决策引擎 |
+| Layer | Role | Implementer | Determinism | Responsibility |
+|------|------|-------------|-------------|----------------|
+| 1 | **LLM (Translator)** | Precision models 1.5B-3B | Probabilistic | Translate intent into workflow JSON only |
+| 2 | **Workflow (Skeleton)** | JSON config files | **Deterministic** | Define node types, connections, workGuide |
+| 3 | **Capability (Hand)** | Plugins + precision models | Probabilistic | Declare capabilities + authorization rules, **no decision authority** |
+| 4 | **GearFlow Engine** | Framework core | **Deterministic** | Schedule Planner / Executor / Supervisor / Decision Engine |
 
-**核心公式**：`GearFlow 引擎 = PlannerCapability + ExecutorCapability + 决策引擎 + Supervisor + Session DAG`
+**Core formula**: `GearFlow Engine = PlannerCapability + ExecutorCapability + Decision Engine + Supervisor + Session DAG`
 
-## 核心设计原则
+## Core Design Principles
 
-1. **决策权归引擎**——Capability 仅声明规则（`decisionRule()`），引擎解释并执行
-2. **LLM 只翻译，不决策**——翻译结果（工作流 JSON）一旦生成，LLM 不再参与执行控制
-3. **工作流是确定性骨架**——节点类型、连接关系、workGuide 全部结构化，零决策语义
-4. **三层工作流**（Task / Session / Production）——精度从单轮对话到跨 Session 复用
-5. **Supervisor 验证每个节点**——`supervisor-verify-1.5b` + `supervisor-llm-1.5b` 双保险
-6. **精准模型驱动 Capability**——每个 Capability 绑定 1.5B-3B 精准模型，本地运行 ~70ms 延迟
-7. **学习库自升级**——每次成功翻译的 `(userInput → workflow)` 存入学习库
+1. **Decision authority belongs to the engine**—Capabilities only declare rules (`decisionRule()`); the engine interprets and enforces them
+2. **LLM only translates, never decides**—Once the translation (workflow JSON) is produced, the LLM no longer participates in execution control
+3. **Workflows are deterministic skeletons**—Node types, connections, and workGuide are fully structured with zero decision semantics
+4. **Three-tier workflows** (Task / Session / Production)—Precision ranges from a single conversation to cross-session reuse
+5. **Supervisor validates every node**—Double safety with `supervisor-verify-1.5b` + `supervisor-llm-1.5b`
+6. **Precision models drive Capabilities**—Each Capability binds a 1.5B-3B precision model running locally at ~70ms latency
+7. **Self-upgrading learning library**—Every successful translation `(userInput → workflow)` is stored in the learning library
 
-## 技术栈
+## Tech Stack
 
-| 层面 | 技术 |
-|------|------|
-| 语言 | Java 21 |
-| 构建 | Gradle |
-| 后端 | Spring Boot 3 + WebFlux（反应式） |
-| 前端 | Vue 3 + Vite |
-| 数据库 | PostgreSQL + pgvector（向量检索）、SQLite + CAS（Session DAG） |
-| 消息 | MQTT（EMQX，A2A 协议实现） |
-| 模型 | Ollama 本地推理 + 云端 Fallback（planner-1.5b、supervisor-verify-1.5b 等） |
+| Layer | Technology |
+|-------|-----------|
+| Language | Java 21 |
+| Build | Gradle |
+| Backend | Spring Boot 3 + WebFlux (reactive) |
+| Frontend | Vue 3 + Vite |
+| Database | PostgreSQL + pgvector (vector retrieval), SQLite + CAS (Session DAG) |
+| Messaging | MQTT (EMQX, A2A protocol implementation) |
+| Models | Ollama local inference + cloud fallback (planner-1.5b, supervisor-verify-1.5b, etc.) |
 
-## 核心引擎
+## Core Engines
 
-### GearFlow 工作流引擎
-- JSON 工作流模型：`agentTask`/`humanTask`/`decisionTask` 等 7 种节点
-- 三层工作流：Task（单轮）→ Session（多轮）→ Production（跨 Session）
-- 拓扑排序（Kahn 算法）+ 按序执行 + Supervisor 验证
-- 决策引擎：BYPASS / NOTIFY / HUMAN_CONFIRM / BLOCK 四档鉴权
+### GearFlow Workflow Engine
+- JSON workflow model: `agentTask` / `humanTask` / `decisionTask` and 7 node types in total
+- Three-tier workflows: Task (single round) → Session (multi-round) → Production (cross-session)
+- Topological sort (Kahn algorithm) + sequential execution + Supervisor validation
+- Decision engine: four-level authorization—BYPASS / NOTIFY / HUMAN_CONFIRM / BLOCK
 
-### 记忆架构
-- 4 层记忆：Session → Working → Project → User
-- 两阶段 Consolidation：实时压缩 + 离线蒸馏
-- FTS5 全文检索 + pgvector 向量检索
+### Memory Architecture
+- 4-tier memory: Session → Working → Project → User
+- Two-phase consolidation: real-time compression + offline distillation
+- FTS5 full-text retrieval + pgvector vector retrieval
 
-### 能力系统（Capability）
-- 13+ 个内置 Capability：Prompt、Memory、Filesystem、Shell、Browser、Python、CoreLLM、Human 等
-- 统一 JSON 规范（`NaturalLanguageCapability` 接口）
-- 每个 Capability 声明 `permissionLevel` + `decisionRule()`
-- 扩展点：第三方插件通过 registry 动态加载
+### Capability System
+- 13+ built-in Capabilities: Prompt, Memory, Filesystem, Shell, Browser, Python, CoreLLM, Human, etc.
+- Unified JSON specification (`NaturalLanguageCapability` interface)
+- Each Capability declares `permissionLevel` + `decisionRule()`
+- Extension point: third-party plugins dynamically loaded via registry
 
-### 精准模型
-- 两层配置体系：`PreciseModel`（具体模型绑定）+ `CapabilityLLMModel`（能力级配置）
-- 4 级降级链：本地精准模型 → 本地通用模型 → 云端精准模型 → 云端通用模型
-- 每个 Capability 绑定 1.5B-3B 精准模型，本地运行
+### Precision Models
+- Two-tier configuration: `PreciseModel` (specific model binding) + `CapabilityLLMModel` (capability-level config)
+- 4-level fallback chain: local precision model → local general model → cloud precision model → cloud general model
+- Each Capability binds a 1.5B-3B precision model running locally
 
-## 生产线引擎（多 Agent 协作）
+## Production Line Engine (Multi-Agent Collaboration)
 
-- Production Flow 工作流：预定义骨架 + 角色分工 + workGuide
-- A2A 协议（Agent-to-Agent）：消息格式、路由、MQTT 集成
-- PMBOK 知识领域驱动的项目内存管理
-- 生产线蒸馏：从成功执行中自动提炼 Production Flow 模板
+- Production Flow workflows: predefined skeleton + role division + workGuide
+- A2A Protocol (Agent-to-Agent): message format, routing, MQTT integration
+- PMBOK knowledge-area-driven project memory management
+- Production line distillation: automatically distill Production Flow templates from successful executions
 
-## 微服务架构
+## Microservices Architecture
 
-13 组件 → 6 微服务：Gateway、Auth、Agent、Memory、Production、Model
+13 components → 6 microservices: Gateway, Auth, Agent, Memory, Production, Model
 
-## 实施状态
+## Implementation Status
 
-| 组件 | 状态 |
-|------|------|
-| GearFlow 引擎 | ✅ 核心实现 |
-| planning Capability | ✅ 核心实现 |
-| Capability 接口 | ✅ 23 个实现 |
-| Session DAG | ✅ 核心实现 |
-| Working Memory | ✅ 核心实现 |
-| 决策引擎 | ✅ 基础实现 |
-| Project / User Memory | 📝 部分实现 |
-| 生产线（多 Agent） | 📝 骨架就绪 |
-| 微服务拆分 | ⚠️ 未开始 |
+| Component | Status |
+|-----------|--------|
+| GearFlow Engine | ✅ Core implemented |
+| planning Capability | ✅ Core implemented |
+| Capability interface | ✅ 23 implementations |
+| Session DAG | ✅ Core implemented |
+| Working Memory | ✅ Core implemented |
+| Decision Engine | ✅ Basic implementation |
+| Project / User Memory | 📝 Partially implemented |
+| Production Line (multi-agent) | 📝 Skeleton ready |
+| Microservices split | ⚠️ Not started |
 
-### 实施阶段
+### Implementation Phases
 
-- **Phase 1**（当前~2026-08）：单 Agent 核心稳定
-- **Phase 2**（2026-08~2026-10）：记忆系统完整 + Capability 扩展
-- **Phase 3**（2026-10~2027-02）：多 Agent 协作 + 微服务拆分 + 生产就绪
+- **Phase 1** (current ~2026-08): Single Agent core stabilized
+- **Phase 2** (2026-08 ~ 2026-10): Memory system complete + Capability expansion
+- **Phase 3** (2026-10 ~ 2027-02): Multi-agent collaboration + microservices split + production-ready
 
-## 架构文档
+## Architecture Documentation
 
-完整架构文档见 [Wiki](https://github.com/kingofducati/OpenGearDoc/wiki)，涵盖 15 个章节：
+Complete architecture documentation is available in the [Wiki](https://github.com/kingofducati/OpenGearDoc/wiki), covering 15 chapters:
 
-| 章节 | 内容 |
-|------|------|
-| 01 概述 | 为什么需要 OpenGear |
-| 02 核心架构 | 哲学、任务状态、数据流、UML 设计、缓存架构 |
-| 03 工作流引擎 | JSON 模型、动态生成、三层工作流、决策引擎 |
-| 04 记忆架构 | 4 层记忆、Consolidation、检索、存储 |
-| 05 能力系统 | 13 个 Capability + 统一 JSON 规范 |
-| 06 精准模型 | 设计 API、4 级降级链、训练标准 |
-| 07 前端界面 | ChatUI、鉴权确认弹窗、工作流面板 |
-| 08 A2A 协议 | 消息格式、路由、MQTT |
-| 09 生产线引擎 | 多 Agent 协作、PMBOK、蒸馏 |
-| 10 数据架构 | 53 张 PG 表、缓存与通信 |
-| 11 可观测性 | 监控、日志、追踪、告警 |
-| 12 灾备与 DevOps | 备份恢复、CI/CD |
-| 13 微服务架构 | 6 服务拆分、ACP 通信 |
-| 14 测试与 TDD | 测试策略、引擎决策单测 |
-| 15 安全架构 | 认证、授权、加密、审计 |
+| Chapter | Content |
+|---------|---------|
+| 01 Overview | Why OpenGear is needed |
+| 02 Core Architecture | Philosophy, task state, data flow, UML design, cache architecture |
+| 03 Workflow Engine | JSON model, dynamic generation, three-tier workflow, decision engine |
+| 04 Memory Architecture | 4-tier memory, consolidation, retrieval, storage |
+| 05 Capability System | 13 Capabilities + unified JSON specification |
+| 06 Precision Models | Design API, 4-level fallback chain, training standard |
+| 07 Frontend | ChatUI, authorization confirmation dialog, workflow panel |
+| 08 A2A Protocol | Message format, routing, MQTT |
+| 09 Production Line Engine | Multi-agent collaboration, PMBOK, distillation |
+| 10 Data Architecture | 53 PostgreSQL tables, cache and messaging |
+| 11 Observability | Monitoring, logging, tracing, alerting |
+| 12 Disaster Recovery & DevOps | Backup and recovery, CI/CD |
+| 13 Microservices Architecture | 6-service split, ACP communication |
+| 14 Testing & TDD | Testing strategy, engine decision unit tests |
+| 15 Security Architecture | Authentication, authorization, encryption, audit |
 
-## 阅读路线图
+## Reading Roadmap
 
-| 角色 | 阅读路径 | 预计 |
-|------|---------|------|
-| 决策者/架构师 | 第1-2章 → 第3章 → 第5-8章 → 第13章 | 2h |
-| 后端工程师 | 第3章 → 第5章 → 第6章 → 第13-15章 | 4h |
-| 新加入工程师 | 按章节顺序，每章先读"本章导读" | 6h |
+| Role | Reading Path | Estimated Time |
+|------|--------------|----------------|
+| Decision-maker / Architect | Ch1-2 → Ch3 → Ch5-8 → Ch13 | 2h |
+| Backend Engineer | Ch3 → Ch5 → Ch6 → Ch13-15 | 4h |
+| New Engineer | Read chapters in order, start with each chapter's "Chapter Guide" | 6h |
 
 ## License
 
