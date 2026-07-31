@@ -60,7 +60,7 @@ The complete architecture documentation is in [`wiki`](OpenGearDoc/wikis). It is
 | **Ch 17-18** | Reference + Implementation: References (with 55 external resources) / Implementation Plans (naming rule `18.XX-YYYYMMDD-<name>.md`) |
 
 > ⚠️ Documentation lives in two parallel repositories:
-> - **Gitee Wiki Repo**: [`open-gear.wiki`](https://gitee.com/duxu2004/open-gear.wiki) (used as the `wiki-temp/` submodule of this repo)
+> - **GitHub Wiki Repo**: [`OpenGearDoc.wiki`](https://github.com/kingofducati/OpenGearDoc/wiki) (used as the `wiki-temp/` submodule of this repo)
 > - **This Repo**: [`open-gear`](https://gitee.com/duxu2004/open-gear) (Java + Vue + Gradle + Docker + K8s)
 
 ## Bootstrapping Infrastructure (Postgres / Redis / RocketMQ / MinIO / Nacos)

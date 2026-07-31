@@ -47,7 +47,7 @@ OpenGear 以 **GearFlow 引擎 + GearDecision** 为驾驶者，LLM 退居**参�
 
 ## 章节导航
 
-完整架构文档见 [`wiki `](OpenGearDoc/wikis)。按 **"问题 → 核心引擎 → 支撑系统 → 业务安全 + 扩展 → 参考 + 实施"** 五大部分组织：
+完整架构文档见 [`wiki `](https://github.com/kingofducati/OpenGearDoc/wiki)。按 **"问题 → 核心引擎 → 支撑系统 → 业务安全 + 扩展 → 参考 + 实施"** 五大部分组织：
 
 | 章节范围 | 主题 |
 |---------|------|
@@ -58,7 +58,7 @@ OpenGear 以 **GearFlow 引擎 + GearDecision** 为驾驶者，LLM 退居**参�
 | **17-18 章** | 参考 + 实施：参考资料（含 55 条外部资料引用）/ 实施计划（命名规则 `18.XX-YYYYMMDD-<name>.md`） |
 
 > ⚠️ 文档有两套并行仓库：
-> - **Gitee Wiki 仓库**：[`open-gear.wiki`](https://gitee.com/duxu2004/open-gear.wiki) （作为本仓库 `wiki-temp/` 子模块）
+> - **GitHub Wiki 仓库**：[`OpenGearDoc.wiki`](https://github.com/kingofducati/OpenGearDoc/wiki) （作为本仓库 `wiki-temp/` 子模块）
 > - **本仓库**：[`open-gear`](https://gitee.com/duxu2004/open-gear)（Java + Vue + Gradle + Docker + K8s）
 
 ## 启动基础设施（Postgres / Redis / RocketMQ / MinIO / Nacos）
