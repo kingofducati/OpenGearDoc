@@ -1,133 +1,178 @@
-﻿# OpenGear
+# OpenGear
 
-> **Core Idea**: Let the LLM be controlled by the GearFlow engine, rather than letting the LLM control the Agent.
+> **AI Agent 框架** —— 让 LLM 受 GearFlow 引擎控制，而非让 LLM 控制 Agent。
+> **核心思想**：OpenGear 采用**双引擎架构**——**GearFlow 引擎驱动工作流执行**（怎么执行），**GearDecision 驱动鉴权判定**（该不该执行）。两个引擎平级协同，共同保证系统行为可控。LLM 作为引擎的参谋，在需要时承担逻辑推理和意图翻译，决策权始终归于引擎。
 >
-> The fundamental flaw of traditional AI Agents is forcing the LLM to act as both translator and decision-maker—but the LLM is a probabilistic model and cannot precisely control execution. OpenGear solves this contradiction through **four-layer responsibility separation**.
+> **最新版本**：**v0.8.2**（2026-07-30，双引擎架构；决策引擎重命名为 GearDecision；安全架构前置第12章）
+>
+> **当前里程碑**：Phase 7v3 6 维度代码质量全面收官（R106-R190，85 Rounds，2425 测试 0 失败）
+> - 维度 1 真实性（workGuide 契约）✅ / 维度 2 @Slf4j（5 文件）✅ / 维度 3 构造器注入（AgentRegistry）✅
+> - 维度 4 @Query（9 Dao + 9 Repository）✅ / 维度 5 Spring Test（14 Tests + 19/19 dep）✅ / 维度 6 Javadoc（19/19 子模块 0 文件无 Javadoc）✅
 
-📖 **Complete Architecture Document → [Wiki ‌Home](https://github.com/kingofducati/OpenGearDoc/wiki)**
+---
 
-## One-Sentence Summary
+## 一句话总结
 
-OpenGear treats the LLM as a **translator** (intent → GearFlow workflow JSON), and **unifies decision-making authority in the GearFlow engine**. Execution is carried out by the workflow skeleton, the decision engine, Supervisor validation, and precision-model-driven Capabilities working together.
+OpenGear 以 **GearFlow 引擎 + GearDecision** 为驾驶者，LLM 退居**参谋与翻译官**——在需要时承担逻辑推理和意图转译，但决策权与执行权始终归于引擎。由工作流骨架 + GearDecision 决策引擎 + Supervisor 验证 + 精准模型驱动的 Capability 共同执行。
 
-## Four-Layer Architecture
+---
 
-| Layer | Role | Implementer | Determinism | Responsibility |
-|------|------|-------------|-------------|----------------|
-| 1 | **LLM (Translator)** | Precision models 1.5B-3B | Probabilistic | Translate intent into workflow JSON only |
-| 2 | **Workflow (Skeleton)** | JSON config files | **Deterministic** | Define node types, connections, workGuide |
-| 3 | **Capability (Hand)** | Plugins + precision models | Probabilistic | Declare capabilities + authorization rules, **no decision authority** |
-| 4 | **GearFlow Engine** | Framework core | **Deterministic** | Schedule Planner / Executor / Supervisor / Decision Engine |
+## 双引擎架构总览
 
-**Core formula**: `GearFlow Engine = PlannerCapability + ExecutorCapability + Decision Engine + Supervisor + Session DAG`
+```
+┌──────────────────────────────────────────────────────────────────────┐
+│                          OpenGear 双引擎架构                          │
+├──────────────────────────────────────────────────────────────────────┤
+│                                                                       │
+│  ┌─────────────────────┐              ┌─────────────────────┐       │
+│  │  GearFlow 引擎       │   平级协同    │  GearDecision 决策引擎│       │
+│  │  （怎么执行）         │  ◀────────▶  │  （该不该执行）        │       │
+│  │                     │              │                     │       │
+│  │  - Planner 生成 JSON │              │  - 4 档决策：          │       │
+│  │  - Executor 执行节点 │              │    BYPASS / NOTIFY    │       │
+│  │  - Supervisor 验证   │              │    HUMAN_CONFIRM      │       │
+│  │                     │              │    BLOCK              │       │
+│  │                     │              │  - 两级规则：          │       │
+│  │                     │              │    用户级 + 能力级      │       │
+│  │                     │              │  - DecisionCapability：│       │
+│  │                     │              │    决策蒸馏 + 人机交互  │       │
+│  └─────────────────────┘              └─────────────────────┘       │
+│           ▲                                       ▲                   │
+│           └─────────── LLM 作为翻译官 ─────────────┘                  │
+│                                                                       │
+└──────────────────────────────────────────────────────────────────────┘
+```
 
-## Core Design Principles
+---
 
-1. **Decision authority belongs to the engine**—Capabilities only declare rules (`decisionRule()`); the engine interprets and enforces them
-2. **LLM only translates, never decides**—Once the translation (workflow JSON) is produced, the LLM no longer participates in execution control
-3. **Workflows are deterministic skeletons**—Node types, connections, and workGuide are fully structured with zero decision semantics
-4. **Three-tier workflows** (Task / Session / Production)—Precision ranges from a single conversation to cross-session reuse
-5. **Supervisor validates every node**—Double safety with `supervisor-verify-1.5b` + `supervisor-llm-1.5b`
-6. **Precision models drive Capabilities**—Each Capability binds a 1.5B-3B precision model running locally at ~70ms latency
-7. **Self-upgrading learning library**—Every successful translation `(userInput → workflow)` is stored in the learning library
+## 章节导航
 
-## Tech Stack
+完整架构文档见 [`wiki `](OpenGearDoc/wikis)。按 **"问题 → 核心引擎 → 支撑系统 → 业务安全 + 扩展 → 参考 + 实施"** 五大部分组织：
 
-| Layer | Technology |
-|-------|-----------|
-| Language | Java 21 |
-| Build | Gradle |
-| Backend | Spring Boot 3 + WebFlux (reactive) |
-| Frontend | Vue 3 + Vite |
-| Database | PostgreSQL + pgvector (vector retrieval), SQLite + CAS (Session DAG) |
-| Messaging | MQTT (EMQX, A2A protocol implementation) |
-| Models | Ollama local inference + cloud fallback (planner-1.5b, supervisor-verify-1.5b, etc.) |
+| 章节范围 | 主题 |
+|---------|------|
+| **1-2 章** | 为什么需要 OpenGear、核心架构（双引擎 + 翻译与控制分离 + UML） |
+| **3-4 章** | 核心引擎：**GearFlow 工作流引擎** + **GearDecision 决策引擎**（v0.8.2 后独立平级） |
+| **5-11 章** | 支撑系统：记忆架构 / 能力系统 / 精准模型 / 前端 / A2A 协议 / 生产线引擎 / 数据架构 |
+| **12-16 章** | 业务安全 + 扩展：安全架构（含 GearDecision 应用） / 可观测性 / 灾备与 DevOps / 微服务架构 / 测试与 TDD |
+| **17-18 章** | 参考 + 实施：参考资料（含 55 条外部资料引用）/ 实施计划（命名规则 `18.XX-YYYYMMDD-<name>.md`） |
 
-## Core Engines
+> ⚠️ 文档有两套并行仓库：
+> - **Gitee Wiki 仓库**：[`open-gear.wiki`](https://gitee.com/duxu2004/open-gear.wiki) （作为本仓库 `wiki-temp/` 子模块）
+> - **本仓库**：[`open-gear`](https://gitee.com/duxu2004/open-gear)（Java + Vue + Gradle + Docker + K8s）
 
-### GearFlow Workflow Engine
-- JSON workflow model: `agentTask` / `humanTask` / `decisionTask` and 7 node types in total
-- Three-tier workflows: Task (single round) → Session (multi-round) → Production (cross-session)
-- Topological sort (Kahn algorithm) + sequential execution + Supervisor validation
-- Decision engine: four-level authorization—BYPASS / NOTIFY / HUMAN_CONFIRM / BLOCK
+## 启动基础设施（Postgres / Redis / RocketMQ / MinIO / Nacos）
 
-### Memory Architecture
-- 4-tier memory: Session → Working → Project → User
-- Two-phase consolidation: real-time compression + offline distillation
-- FTS5 full-text retrieval + pgvector vector retrieval
+```bash
+cd docker
+docker-compose up -d
+```
 
-### Capability System
-- 13+ built-in Capabilities: Prompt, Memory, Filesystem, Shell, Browser, Python, CoreLLM, Human, etc.
-- Unified JSON specification (`NaturalLanguageCapability` interface)
-- Each Capability declares `permissionLevel` + `decisionRule()`
-- Extension point: third-party plugins dynamically loaded via registry
+## 编译
 
-### Precision Models
-- Two-tier configuration: `PreciseModel` (specific model binding) + `CapabilityLLMModel` (capability-level config)
-- 4-level fallback chain: local precision model → local general model → cloud precision model → cloud general model
-- Each Capability binds a 1.5B-3B precision model running locally
+```bash
+# 单模块编译
+gradlew :opengear-agent-engine:compileJava
 
-## Production Line Engine (Multi-Agent Collaboration)
+# 全模块编译
+gradlew compileJava
+```
 
-- Production Flow workflows: predefined skeleton + role division + workGuide
-- A2A Protocol (Agent-to-Agent): message format, routing, MQTT integration
-- PMBOK knowledge-area-driven project memory management
-- Production line distillation: automatically distill Production Flow templates from successful executions
+---
 
-## Microservices Architecture
+## 跑测试
 
-13 components → 6 microservices: Gateway, Auth, Agent, Memory, Production, Model
+```bash
+# 全模块测试
+gradlew test
 
-## Implementation Status
+# 单个测试套件
+gradlew :opengear-agent-engine:test --tests "io.opengear.agentengine.risk.RiskRegistryTest"
 
-| Component | Status |
-|-----------|--------|
-| GearFlow Engine | ✅ Core implemented |
-| planning Capability | ✅ Core implemented |
-| Capability interface | ✅ 23 implementations |
-| Session DAG | ✅ Core implemented |
-| Working Memory | ✅ Core implemented |
-| Decision Engine | ✅ Basic implementation |
-| Project / User Memory | 📝 Partially implemented |
-| Production Line (multi-agent) | 📝 Skeleton ready |
-| Microservices split | ⚠️ Not started |
+# v2 决策引擎相关测试
+gradlew :opengear-agent-engine:test --tests "io.opengear.agentengine.engine.*" --tests "io.opengear.agentengine.auth.*" --tests "io.opengear.agentengine.web.Decision*"
 
-### Implementation Phases
+# GearDecision 相关
+gradlew :opengear-decision-service:test
+```
 
-- **Phase 1** (current ~2026-08): Single Agent core stabilized
-- **Phase 2** (2026-08 ~ 2026-10): Memory system complete + Capability expansion
-- **Phase 3** (2026-10 ~ 2027-02): Multi-agent collaboration + microservices split + production-ready
+---
 
-## Architecture Documentation
+## 实现原则（**最重要**）
 
-Complete architecture documentation is available in the [Wiki](https://github.com/kingofducati/OpenGearDoc/wiki), covering 15 chapters:
+- **JDK**：使用 JDK 17
+- **严格 1:1 实现**：设计文档转化为 Java 代码，**禁用"减负式重构"、"简化"、占位实现等自我欺骗、偷懒的逻辑**
+- 设计文档中的每一个分支、每一个条件、每一条路径都必须出现在 Java 实现中
+- 代码需要严格遵守代码注释规则对代码进行 Javadoc
+- 使用 Lombok `@Data`/`@Getter`/`@Setter`
+- field injection 为构造器注入
+- `@Query` JPQL/SQL 注解 + Specification
+- 使用 Spring Test（`@SpringBootTest`/`@MockBean`/`TestRestTemplate`）
+- 按 Batch 节奏，分批实施
 
-| Chapter | Content |
-|---------|---------|
-| 01 Overview | Why OpenGear is needed |
-| 02 Core Architecture | Philosophy, task state, data flow, UML design, cache architecture |
-| 03 Workflow Engine | JSON model, dynamic generation, three-tier workflow, decision engine |
-| 04 Memory Architecture | 4-tier memory, consolidation, retrieval, storage |
-| 05 Capability System | 13 Capabilities + unified JSON specification |
-| 06 Precision Models | Design API, 4-level fallback chain, training standard |
-| 07 Frontend | ChatUI, authorization confirmation dialog, workflow panel |
-| 08 A2A Protocol | Message format, routing, MQTT |
-| 09 Production Line Engine | Multi-agent collaboration, PMBOK, distillation |
-| 10 Data Architecture | 53 PostgreSQL tables, cache and messaging |
-| 11 Observability | Monitoring, logging, tracing, alerting |
-| 12 Disaster Recovery & DevOps | Backup and recovery, CI/CD |
-| 13 Microservices Architecture | 6-service split, ACP communication |
-| 14 Testing & TDD | Testing strategy, engine decision unit tests |
-| 15 Security Architecture | Authentication, authorization, encryption, audit |
+### 大文件代码分批策略
 
-## Reading Roadmap
+超 500 行以上的 Java 大文件，按以下模式拆分：
 
-| Role | Reading Path | Estimated Time |
-|------|--------------|----------------|
-| Decision-maker / Architect | Ch1-2 → Ch3 → Ch5-8 → Ch13 | 2h |
-| Backend Engineer | Ch3 → Ch5 → Ch6 → Ch13-15 | 4h |
-| New Engineer | Read chapters in order, start with each chapter's "Chapter Guide" | 6h |
+- **组合模式**：大方法由多个独立 section 组成 → `orchestrator` + N 个 `*Filter` 小类
+- **继承模式**：不同文件提供独立功能 → 抽象基类 + 多个子类
+- **代理模式**：大量委托给 helper 类 → Spring `@Autowired` 注入 helper，方法体一行委托
+
+拆分原则：
+
+- ✅ 严格 1:1 port 优先
+- ✅ 拆分后逻辑与设计文档 100% 等价
+- ❌ 不允许"减负式重构"、"简化"（如简化条件、合并逻辑）
+
+### 代码注释规则（**强制 production-grade Javadoc**）
+
+详情见 [`wiki-temp/03-工作流引擎/03.04-comment-style.md`](wiki-temp/03-工作流引擎/03.05-四层Executor) （02-核心架构 §Javadoc 规则），要点：
+
+1. **类级 Javadoc**：Java 实现文档来源标注 + What/How/Why + 设计取舍 + 行数→Java 实现映射
+2. **方法级 Javadoc**：功能描述 + `@param`/`@return`/`@throws` + 副作用
+3. **字段级 Javadoc**：字段用途 + 单位/格式 + 约束 + 字段名 + 业务规则
+4. **内部实现**：关键算法步骤 + 决策点 + 性能考量 + 与文档设计差异点
+5. **注释语言**：Javadoc 主体中文，行内 `//` 中文，专业术语保留英文
+
+### TDD 工作流（已固化）
+
+- 🔴 **RED**：先写测试（JUnit 5）
+  - 一个测试只测一个行为
+  - 测试名用人类语言描述场景（不是 `testFoo`）
+  - TDD 失败信息要有诊断价值
+- 🟢 **GREEN**：编写刚好通过测试的实现
+  - 最小实现，不提前考虑优化
+  - 编译/测试通过是唯一标准
+- ✅ **VERIFY**：`gradlew test` 全量
+  - 跑全模块测试，确认无回归
+  - 性能基线（如决策 P99 < 50ms）
+- 📝 **COMMIT**：单条提交信息描述实际文件清单
+  - 格式：`[Round N] <描述>`
+  - 含触动文件清单 + 触动行数
+
+### Batch 节奏
+
+每批完成必须立即执行以下顺序：
+
+1. `gradlew test` 全量测试通过（`opengear-agent-engine:test`）
+2. 更新本 README.md（进度表数字 + ✅ 列表 + 统计时间）
+3. 更新 `memory/YYYY-MM-DD-rN.md`（详细会议记录）— 已被 v0.8.2 仓库卫生清理删除
+4. `git add <准确文件清单>` → `git commit -m "Round N: <描述>"` → `git push --force-with-lease origin <branch>`
+
+
+---
+
+## 贡献者
+
+- 📌 **架构决策 + 文档内容**：项目所有者
+- 🔧 **AI 辅助施工**：MiniMax-M3 (MiniMax, 2026)
+  - 18.46/18.40 决策体系方案
+  - 文档章节重排 / 编号归一 / 双引擎架构落写
+  - 安全架构借鉴风控/支付/反欺诈系统设计
+- 🤝 **贡献方式**：见 [`wiki-temp/17-参考资料/`](wiki-temp/17-参考资料/) 中的 git 管理规范
+
+---
 
 ## License
 
-Apache 2.0
+Apache License 2.0 — see [LICENSE](LICENSE) for details.
