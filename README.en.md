@@ -49,7 +49,7 @@ OpenGear uses the **GearFlow engine + GearDecision** as drivers, while the LLM s
 
 ## Chapter Navigation
 
-The complete architecture documentation is in [`wiki`](OpenGearDoc/wikis). It is organized in five major parts: **"Problem → Core Engines → Supporting Systems → Security + Extensions → Reference + Implementation"**:
+The complete architecture documentation is in [`wiki`](https://github.com/kingofducati/OpenGearDoc/wiki). It is organized in five major parts: **"Problem → Core Engines → Supporting Systems → Security + Extensions → Reference + Implementation"**:
 
 | Chapter Range | Topic |
 |---------------|-------|
